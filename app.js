@@ -6,18 +6,29 @@ const orderRoutes = require("./routes/orders.route");
 const userRoutes = require("./routes/users");
 const orderDetailRoutes = require("./routes/OrderDetailRoute");
 const typeRoutes = require("./routes/Types.route");
-const cartRouutes = require("./routes/CartRoute")
+const cartRouutes = require("./routes/CartRoute");
+const couponRoutes = require ("./routes/couponRoute")
 const paymentRoutes = require("./routes/payment.route");
 const cors = require('cors');
 const path = require('path');
 const multer = require('multer');
-const axios = require('axios')
+const axios = require('axios');
+const mongoose = require ("mongoose");
 require("dotenv").config();
+
 
 const app = express();
 
 // Kết nối đến cơ sở dữ liệu
-connectDB();
+//connectDB();
+// Lấy URL từ biến môi trường
+const DB_URI = process.env.MONGODB_URI;
+
+// Kết nối MongoDB
+mongoose
+  .connect(DB_URI)
+  .then(() => console.log("Kết nối MongoDB thành công!"))
+  .catch((err) => console.error("Lỗi kết nối MongoDB:", err));
 
 // Middleware
 app.use(cors());
@@ -33,8 +44,20 @@ app.use("/api/orderdetails", orderDetailRoutes);
 app.use("/api/types", typeRoutes);
 app.use("/api/carts", cartRouutes);
 app.use("/api/payments", paymentRoutes);
+app.use("/api/coupons", couponRoutes);
 
-
+// Kết nối MongoDB
+mongoose
+  .connect(DB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => {
+    console.log("Connected to MongoDB successfully!");
+  })
+  .catch((err) => {
+    console.error("Failed to connect to MongoDB:", err);
+  });
 
 // Cấu hình multer để tùy chỉnh đường dẫn lưu trữ
 const storage = multer.diskStorage({
@@ -64,9 +87,9 @@ app.post('/api/uploads', upload.any(), (req, res) => {
 });
 
 
+// Khởi động server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  console.log(`Server chạy tại http://localhost:${PORT}`);
 });
-
 module.exports = app;

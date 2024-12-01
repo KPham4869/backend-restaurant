@@ -10,7 +10,18 @@ const ProductSchema = new mongoose.Schema({
     price: { type: Number, required: true },
     newprice: { type: Number },
     image: { type: String },
-}, 
+    ratings: [
+      {
+        star: Number,
+        comment: String,
+        postedby: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      },
+    ],
+    totalrating: {
+      type: Number,
+      default: 0,
+    },
+  },
 { timestamps: true });
 
 const Product = mongoose.models.Product || mongoose.model('Product', ProductSchema);

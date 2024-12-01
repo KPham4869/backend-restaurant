@@ -1,62 +1,106 @@
 // controllers/orderController.js
 const Order = require('../models/OrdersModel');
 const Cart = require('../models/CartModel');
-const OrderDetailController = require('./orderDetailController');
+const asyncHandler = require("express-async-handler");
 
-// Tạo đơn hàng từ giỏ hàng
-exports.createOrder = async (req, res) => {
-    try {
-        const user_id = req.user._id;
-        const { delivery_address } = req.body;
+// Tạo đơn hàng
+const createOrder = asyncHandler(async (req, res) => {
+  const { username, shippingInfo, paymentInfo, orderItems, totalPrice, totalPriceAfterDiscount } = req.body;
 
-        // Lấy các sản phẩm trong giỏ hàng
-        const cartItems = await Cart.find({ user_id });
+  // Kiểm tra dữ liệu đầu vào
+  if (!username || !orderItems || orderItems.length === 0) {
+    res.status(400);
+    throw new Error("Invalid order data. Username and order items are required.");
+  }
 
-        if (!cartItems.length) {
-            return res.status(400).json({ error: 'Giỏ hàng rỗng' });
-        }
+  // Tạo đơn hàng mới
+  const order = await Order.create({
+    username,
+    shippingInfo,
+    paymentInfo,
+    orderItems,
+    totalPrice,
+    totalPriceAfterDiscount,
+    paidAt: paymentInfo?.momoTransactionId ? Date.now() : undefined, // Chỉ gán nếu có thanh toán
+  });
 
-        // Tính tổng giá trị đơn hàng
-        const total_price = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  res.status(201).json(order);
+});
 
-        // Tạo đơn hàng mới
-        const order = await Order.create({
-            user_id,
-            total_price,
-            delivery_address,
-            status: 'pending'
-        });
+// Lấy danh sách đơn hàng của người dùng (My Orders)
+const getMyOrders = asyncHandler(async (req, res) => {
+  const { username } = req.params;
 
-        // Tạo chi tiết đơn hàng cho mỗi mục trong giỏ hàng
-        await OrderDetailController.createOrderDetails(order._id, cartItems);
+  // Tìm tất cả đơn hàng theo username
+  const orders = await Order.find({ username }).sort({ createdAt: -1 });
 
-        // Xóa giỏ hàng sau khi tạo đơn hàng
-        await Cart.deleteMany({ user_id });
+  if (!orders || orders.length === 0) {
+    res.status(404);
+    throw new Error("No orders found for this user.");
+  }
 
-        res.status(201).json({ message: 'Đơn hàng đã được tạo thành công', order });
-    } catch (error) {
-        res.status(500).json({ error: 'Lỗi tạo đơn hàng' });
-    }
+  res.status(200).json(orders);
+});
+
+// Lấy tất cả đơn hàng (Admin)
+const getAllOrders = asyncHandler(async (req, res) => {
+  // Tìm tất cả đơn hàng, bao gồm thông tin chi tiết sản phẩm
+  const orders = await Order.find().populate("orderItems.product").sort({ createdAt: -1 });
+
+  if (!orders || orders.length === 0) {
+    res.status(404);
+    throw new Error("No orders found.");
+  }
+
+  res.status(200).json(orders);
+});
+
+// Lấy chi tiết đơn hàng theo ID
+const getOrderById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Tìm đơn hàng theo ID
+  const order = await Order.findById(id).populate("orderItems.product");
+
+  if (!order) {
+    res.status(404);
+    throw new Error("Order not found.");
+  }
+
+  res.status(200).json(order);
+});
+
+// Cập nhật đơn hàng theo ID (Admin)
+const updateOrderById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { orderStatus, paymentInfo } = req.body;
+
+  // Tìm và cập nhật đơn hàng
+  const updatedOrder = await Order.findByIdAndUpdate(
+    id,
+    {
+      orderStatus,
+      paymentInfo: {
+        ...paymentInfo,
+        momoTransactionId: paymentInfo?.momoTransactionId || undefined,
+      },
+    },
+    { new: true }
+  );
+
+  if (!updatedOrder) {
+    res.status(404);
+    throw new Error("Order not found or failed to update.");
+  }
+
+  res.status(200).json(updatedOrder);
+});
+
+module.exports = {
+  createOrder,
+  getMyOrders,
+  getAllOrders,
+  getOrderById,
+  updateOrderById,
 };
 
-// Lấy danh sách đơn hàng của người dùng
-exports.getOrders = async (req, res) => {
-    try {
-        const user_id = req.user._id;
-        const orders = await Order.find({ user_id });
-        res.status(200).json(orders);
-    } catch (error) {
-        res.status(500).json({ error: 'Lỗi lấy đơn hàng' });
-    }
-};
-
-// Lấy chi tiết đơn hàng cụ thể (gọi tới OrderDetailController)
-exports.getOrderDetails = async (req, res) => {
-    try {
-        const { order_id } = req.params;
-        const orderDetails = await OrderDetailController.getOrderDetailsByOrderId(order_id);
-        res.status(200).json(orderDetails);
-    } catch (error) {
-        res.status(500).json({ error: 'Lỗi lấy chi tiết đơn hàng' });
-    }
-};

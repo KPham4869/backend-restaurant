@@ -1,8 +1,10 @@
 // controllers/ProductsController.js
-const Product = require('../models/productsModel');
-// const path = require('path');
+const Product = require('../models/ProductsModel');
+const path = require('path');
 const Type = require('../models/TypesModel');
 const { getNextSequence } = require('./CounterController');
+const asyncHandler = require('express-async-handler');
+
 
 // Tạo sản phẩm mới
 exports.createProduct = async (req, res) => {
@@ -129,6 +131,74 @@ exports.getProductsByType = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+exports.rating = async (req, res) => {
+  const { _id } = req.user; // ID người dùng từ JWT
+  const { star, productId, comment } = req.body; // Trích xuất thông tin từ body của request
+  console.log('Received productId:', productId);
+  try {
+    // Chuyển đổi productId thành kiểu Number nếu nó là chuỗi
+    const prodId = Number(productId);
 
+    // Kiểm tra xem giá trị productId đã được chuyển thành số chưa
+    if (isNaN(prodId)) {
+      return res.status(400).json({ message: "Invalid productId, must be a number" });
+    }
+       // In ra giá trị đã chuyển đổi của productId
+    console.log('Converted productId:', prodId);
 
+    // Tìm sản phẩm theo ID
+    const product = await Product.findOne({ ID_Product: prodId });
+    console.log('Found product:', product);  
 
+    // Kiểm tra nếu sản phẩm không tồn tại
+    if (!product) {
+      return res.status(400).json({ message: 'Product not found' });
+    }
+
+    // Kiểm tra nếu người dùng đã đánh giá sản phẩm
+    let alreadyRated = product.ratings.find(
+      (rating) => rating.postedby.toString() === _id.toString()
+    );
+
+    if (alreadyRated) {
+      // Nếu đã đánh giá, cập nhật đánh giá
+      await Product.updateOne(
+        { ID_Product: prodId, "ratings.postedby": _id },
+        {
+          $set: { "ratings.$.star": star, "ratings.$.comment": comment },
+        }
+      );
+    } else {
+      // Nếu chưa đánh giá, thêm đánh giá mới
+      await Product.findByIdAndUpdate(
+        product._id,
+        {
+          $push: {
+            ratings: {
+              star: star,
+              comment: comment,
+              postedby: _id,
+            },
+          },
+        }
+      );
+    }
+
+    // Cập nhật tổng điểm của sản phẩm sau khi đánh giá
+    const updatedProduct = await Product.findOne({ ID_Product: prodId });
+
+    // Tính lại tổng điểm trung bình
+    let totalRating = updatedProduct.ratings.length;
+    let ratingSum = updatedProduct.ratings.reduce((sum, rating) => sum + rating.star, 0);
+    let actualRating = totalRating > 0 ? Math.round(ratingSum / totalRating) : 0;
+
+    // Cập nhật lại tổng điểm của sản phẩm
+    await Product.findByIdAndUpdate(updatedProduct._id, { totalrating: actualRating });
+
+    // Trả về phản hồi thành công
+    res.status(200).json({ message: 'Rating processed successfully' });
+  } catch (error) {
+    console.error('Error processing rating:', error.message);
+    res.status(400).json({ message: error.message });
+  }
+};
